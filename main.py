@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+from openpyxl.utils import get_column_letter
 
 
 # =============================================================================
@@ -193,23 +194,47 @@ def confusion_matrix_3class(y_true, y_pred):
     return cm
 
 
-def metrics_from_cm(cm):
-    """Calcula acuracia, precisao e recall a partir da matriz de confusao."""
-    total = np.sum(cm)
-    acuracia = np.trace(cm) / total
+def parametros_classificacao(cm):
+    """A partir da matriz de confusao 3x3, calcula os parametros do enunciado:
+    Nacertos, Nerros, Acuracia (global) e, para cada classe (abordagem
+    um-contra-todos), Sensibilidade, Especificidade e Precisao, alem das
+    medias (macro) entre as classes.
 
-    precisao = []
-    recall = []
+      TP = cm[i,i]                  (verdadeiros positivos da classe i)
+      FP = soma(coluna i) - TP      (preditos como i, mas de outra classe)
+      FN = soma(linha i)   - TP     (da classe i, mas preditos como outra)
+      TN = total - TP - FP - FN     (nem preditos nem verdadeiros como i)
+
+      Sensibilidade = TP / (TP + FN)
+      Especificidade = TN / (TN + FP)
+      Precisao       = TP / (TP + FP)
+    """
+    total = int(np.sum(cm))
+    nacertos = int(np.trace(cm))
+    nerros = total - nacertos
+    acuracia = nacertos / total if total > 0 else 0.0
+
+    sensibilidade, especificidade, precisao = [], [], []
     for i in range(cm.shape[0]):
         tp = cm[i, i]
         fp = np.sum(cm[:, i]) - tp
         fn = np.sum(cm[i, :]) - tp
-        p = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        r = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-        precisao.append(p)
-        recall.append(r)
+        tn = total - tp - fp - fn
+        sensibilidade.append(tp / (tp + fn) if (tp + fn) > 0 else 0.0)
+        especificidade.append(tn / (tn + fp) if (tn + fp) > 0 else 0.0)
+        precisao.append(tp / (tp + fp) if (tp + fp) > 0 else 0.0)
 
-    return acuracia, precisao, recall
+    return {
+        "nacertos": nacertos,
+        "nerros": nerros,
+        "acuracia": acuracia,
+        "sensibilidade": sensibilidade,
+        "especificidade": especificidade,
+        "precisao": precisao,
+        "sensibilidade_media": float(np.mean(sensibilidade)),
+        "especificidade_media": float(np.mean(especificidade)),
+        "precisao_media": float(np.mean(precisao)),
+    }
 
 
 def contar_acertos(y_true, y_pos):
@@ -295,18 +320,189 @@ def gerar_planilha_tabela1(X_val, y_val, y_pos, taxa_acertos, output_path):
     wb.save(output_path)
 
 
+def gerar_planilha_etapa5(resultados, output_path):
+    """Cria a planilha .xlsx com os resultados da etapa 5, no mesmo estilo da
+    Tabela 1. Possui duas abas:
+      - 'Parametros': uma linha por rede com Nacertos, Nerros, Acuracia,
+        Sensibilidade, Especificidade e Precisao (por classe e media);
+      - 'Matrizes de Confusao': a matriz de confusao 3x3 de cada rede.
+    'resultados' e a lista retornada por etapa5_metricas (com 'nome', 'cm' e
+    'parametros')."""
+    classes = ["Tipo A", "Tipo B", "Tipo C"]
+
+    # --- Estilos (mesma paleta da Tabela 1) ---
+    fonte_titulo = Font(bold=True, size=12)
+    fonte_cabec  = Font(bold=True, color="FFFFFF")
+    fonte_bold   = Font(bold=True)
+    preench_cabec = PatternFill("solid", fgColor="4472C4")  # azul
+    preench_grupo = PatternFill("solid", fgColor="8EAADB")  # azul claro
+    preench_diag  = PatternFill("solid", fgColor="C6EFCE")  # verde (acertos)
+    preench_erro  = PatternFill("solid", fgColor="FFC7CE")  # vermelho (erros)
+    centro = Alignment(horizontal="center", vertical="center")
+    esq    = Alignment(horizontal="left", vertical="center")
+    borda = Border(*(4 * (Side(style="thin", color="999999"),)))
+
+    wb = Workbook()
+
+    # =========================================================================
+    # Aba 1 - Parametros de classificacao (uma linha por rede)
+    # =========================================================================
+    ws = wb.active
+    ws.title = "Parametros"
+    n_col = 16
+
+    # Titulo
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_col)
+    t = ws.cell(row=1, column=1,
+                value="Etapa 5: Parametros de classificacao por rede")
+    t.font = fonte_titulo
+    t.alignment = centro
+
+    # Cabecalho - colunas simples (mescladas verticalmente nas linhas 2 e 3)
+    simples = [(1, "Rede"), (2, "Nacertos"), (3, "Nerros"), (4, "Acuracia (%)")]
+    for col, nome in simples:
+        ws.merge_cells(start_row=2, start_column=col, end_row=3, end_column=col)
+        c = ws.cell(row=2, column=col, value=nome)
+        c.font = fonte_cabec
+        c.fill = preench_cabec
+        c.alignment = centro
+        c.border = borda
+
+    # Cabecalho - grupos com 4 sub-colunas (Tipo A/B/C/Media)
+    grupos = [("Sensibilidade (%)", 5), ("Especificidade (%)", 9),
+              ("Precisao (%)", 13)]
+    for nome, ini in grupos:
+        ws.merge_cells(start_row=2, start_column=ini, end_row=2, end_column=ini + 3)
+        c = ws.cell(row=2, column=ini, value=nome)
+        c.font = fonte_cabec
+        c.fill = preench_cabec
+        c.alignment = centro
+        c.border = borda
+        for k, sub in enumerate(["Tipo A", "Tipo B", "Tipo C", "Media"]):
+            c2 = ws.cell(row=3, column=ini + k, value=sub)
+            c2.font = fonte_bold
+            c2.fill = preench_grupo
+            c2.alignment = centro
+            c2.border = borda
+
+    # Linhas de dados (uma por rede)
+    for idx, r in enumerate(resultados):
+        linha = 4 + idx
+        par = r["parametros"]
+        valores = [
+            r["nome"], par["nacertos"], par["nerros"],
+            round(par["acuracia"] * 100, 2),
+            *[round(v * 100, 2) for v in par["sensibilidade"]],
+            round(par["sensibilidade_media"] * 100, 2),
+            *[round(v * 100, 2) for v in par["especificidade"]],
+            round(par["especificidade_media"] * 100, 2),
+            *[round(v * 100, 2) for v in par["precisao"]],
+            round(par["precisao_media"] * 100, 2),
+        ]
+        for j, val in enumerate(valores, start=1):
+            c = ws.cell(row=linha, column=j, value=val)
+            c.border = borda
+            if j == 1:
+                c.font = fonte_bold
+                c.alignment = esq
+            else:
+                c.alignment = centro
+
+    ws.column_dimensions["A"].width = 20
+    for col in range(2, n_col + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 11
+
+    # =========================================================================
+    # Aba 2 - Matrizes de confusao (uma matriz 3x3 por rede, empilhadas)
+    # =========================================================================
+    ws2 = wb.create_sheet("Matrizes de Confusao")
+    ws2.merge_cells(start_row=1, start_column=1, end_row=1, end_column=5)
+    t2 = ws2.cell(row=1, column=1,
+                  value="Etapa 5: Matrizes de confusao "
+                        "(linha = classe verdadeira, coluna = classe predita)")
+    t2.font = fonte_titulo
+    t2.alignment = centro
+
+    linha = 3
+    for r in resultados:
+        cm = r["cm"]
+
+        # Nome da rede
+        ws2.merge_cells(start_row=linha, start_column=1, end_row=linha, end_column=5)
+        c = ws2.cell(row=linha, column=1, value=r["nome"])
+        c.font = fonte_cabec
+        c.fill = preench_cabec
+        c.alignment = centro
+        linha += 1
+
+        # Cabecalho da matriz
+        for j, nome in enumerate(["Real \\ Predito", "Tipo A", "Tipo B",
+                                  "Tipo C", "Total"], start=1):
+            cc = ws2.cell(row=linha, column=j, value=nome)
+            cc.font = fonte_bold
+            cc.fill = preench_grupo
+            cc.alignment = centro
+            cc.border = borda
+        linha += 1
+
+        # Conteudo da matriz (3 linhas)
+        for i in range(3):
+            rotulo = ws2.cell(row=linha, column=1, value=classes[i])
+            rotulo.font = fonte_bold
+            rotulo.fill = preench_grupo
+            rotulo.alignment = centro
+            rotulo.border = borda
+            for j in range(3):
+                cc = ws2.cell(row=linha, column=2 + j, value=int(cm[i, j]))
+                cc.alignment = centro
+                cc.border = borda
+                if cm[i, j] > 0:
+                    cc.fill = preench_diag if i == j else preench_erro
+            tot = ws2.cell(row=linha, column=5, value=int(np.sum(cm[i])))
+            tot.font = fonte_bold
+            tot.alignment = centro
+            tot.border = borda
+            linha += 1
+        linha += 1  # linha em branco separando as redes
+
+    ws2.column_dimensions["A"].width = 18
+    for col in ["B", "C", "D", "E"]:
+        ws2.column_dimensions[col].width = 11
+
+    wb.save(output_path)
+
+
 # =============================================================================
 # Graficos
 # =============================================================================
 
 def salvar_grafico_eqm(eqm_list, output_path, titulo):
+    """Curva do EQM em funcao de cada epoca de treinamento (escala linear,
+    convencao do livro-texto). Eixo x = epocas, eixo y = EQM."""
+    epocas = np.arange(1, len(eqm_list) + 1)
     plt.figure(figsize=(7, 4.5))
-    plt.plot(eqm_list, color='steelblue')
+    plt.plot(epocas, eqm_list, color='steelblue')
     plt.title(titulo)
     plt.xlabel("Epocas")
     plt.ylabel("EQM")
-    plt.yscale("log")
-    plt.grid(True)
+    plt.grid(True, linestyle=':', alpha=0.6)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300)
+    plt.close()
+
+
+def salvar_grafico_eqm_comparativo(series, labels, output_path, titulo):
+    """Sobrepoe varias curvas de EQM x epoca no mesmo grafico para comparacao
+    (usado na etapa 4 com as 5 redes da etapa 3)."""
+    plt.figure(figsize=(8, 5))
+    for eqm_list, label in zip(series, labels):
+        epocas = np.arange(1, len(eqm_list) + 1)
+        plt.plot(epocas, eqm_list, label=label, linewidth=1.2)
+    plt.title(titulo)
+    plt.xlabel("Epocas")
+    plt.ylabel("EQM")
+    plt.grid(True, linestyle=':', alpha=0.6)
+    plt.legend()
     plt.tight_layout()
     plt.savefig(output_path, dpi=300)
     plt.close()
@@ -374,20 +570,14 @@ def etapa3_validacao_cruzada(dados, output_dir, n_redes=5, proporcao_treino=0.8)
         eqm_list, n_epocas = mlp.train(X_train, y_train, epsilon=1e-6, max_epochs=10000)
 
         # Validacao com pos-processamento
-        y_val_pos = pos_processar(mlp.predict(X_val))
+        y_val_pred = mlp.predict(X_val)
+        y_val_pos = pos_processar(y_val_pred)
         n_acertos, _ = contar_acertos(y_val, y_val_pos)
         taxa = 100.0 * n_acertos / n_val
 
         print(f"   Epocas para convergir : {n_epocas}")
         print(f"   EQM final             : {eqm_list[-1]:.8f}")
         print(f"   Total de acertos      : {n_acertos}/{n_val} ({taxa:.2f}%)\n")
-
-        # Grafico EQM x Epocas desta rede (usado tambem na etapa 4)
-        salvar_grafico_eqm(
-            eqm_list,
-            os.path.join(output_dir, f"eqm_etapa3_rede{i+1}.png"),
-            f"EQM x Epocas - Etapa 3 / Rede {i+1}"
-        )
 
         resultados.append({
             "rede": i + 1,
@@ -397,7 +587,93 @@ def etapa3_validacao_cruzada(dados, output_dir, n_redes=5, proporcao_treino=0.8)
             "n_val": n_val,
             "taxa": taxa,
             "eqm_list": eqm_list,
+            "y_val": y_val,
+            "y_val_pred": y_val_pred,
         })
+
+    return resultados
+
+
+# =============================================================================
+# Etapa 4 - Graficos do EQM em funcao de cada epoca de treinamento
+#           (para a rede da etapa 1 e para as 5 redes da etapa 3)
+# =============================================================================
+
+def etapa4_graficos_eqm(eqm_list_e1, resultados_e3, output_dir):
+    """Traca o grafico do erro quadratico medio em funcao de cada epoca de
+    treinamento para a rede da etapa 1 e para cada uma das redes da etapa 3,
+    alem de um grafico comparativo sobrepondo as 5 redes da etapa 3."""
+    gerados = []
+
+    # --- Rede da etapa 1 ---
+    caminho_e1 = os.path.join(output_dir, "eqm_etapa1.png")
+    salvar_grafico_eqm(eqm_list_e1, caminho_e1,
+                       "EQM x Epocas - Rede da Etapa 1")
+    gerados.append(caminho_e1)
+
+    # --- Cada rede da etapa 3 ---
+    for r in resultados_e3:
+        caminho = os.path.join(output_dir, f"eqm_etapa3_rede{r['rede']}.png")
+        salvar_grafico_eqm(r["eqm_list"], caminho,
+                           f"EQM x Epocas - Etapa 3 / Rede {r['rede']}")
+        gerados.append(caminho)
+
+    # --- Comparativo das 5 redes da etapa 3 ---
+    caminho_comp = os.path.join(output_dir, "eqm_comparativo.png")
+    salvar_grafico_eqm_comparativo(
+        [r["eqm_list"] for r in resultados_e3],
+        [f"Rede {r['rede']}" for r in resultados_e3],
+        caminho_comp,
+        "EQM x Epocas - Comparativo das redes da Etapa 3"
+    )
+    gerados.append(caminho_comp)
+
+    for caminho in gerados:
+        print(f"  Grafico salvo em: {caminho}")
+
+    return gerados
+
+
+# =============================================================================
+# Etapa 5 - Matriz de confusao e parametros de classificacao por rede
+#           (Nacertos, Nerros, Acuracia, Sensibilidade, Especificidade,
+#            Precisao) para a rede da etapa 1 e para as 5 redes da etapa 3
+# =============================================================================
+
+def etapa5_metricas(redes, output_dir):
+    """Para cada rede em 'redes' (dict com 'nome', 'slug', 'y_true', 'y_pred'),
+    obtem a matriz de confusao 3x3 (classe = neuronio de maior saida, argmax),
+    calcula os parametros de classificacao e salva o heatmap da matriz."""
+    classes = ['Tipo A', 'Tipo B', 'Tipo C']
+    resultados = []
+
+    for rede in redes:
+        cm = confusion_matrix_3class(rede["y_true"], rede["y_pred"])
+        par = parametros_classificacao(cm)
+
+        print(f"\n>> {rede['nome']}")
+        print("   Matriz de confusao (linha = verdadeiro, coluna = predito):")
+        print("            " + "".join(f"{c:>8}" for c in classes))
+        for i, c in enumerate(classes):
+            print(f"   {c:>8} " + "".join(f"{cm[i, j]:>8d}" for j in range(3)))
+
+        print(f"   Nacertos   : {par['nacertos']}")
+        print(f"   Nerros     : {par['nerros']}")
+        print(f"   Acuracia   : {par['acuracia'] * 100:.2f}%")
+        print(f"   {'Parametro':<14}{'Tipo A':>9}{'Tipo B':>9}{'Tipo C':>9}{'Media':>10}")
+        for nome, chave in [("Sensibilidade", "sensibilidade"),
+                            ("Especificidade", "especificidade"),
+                            ("Precisao", "precisao")]:
+            vals = "".join(f"{v * 100:8.2f}%" for v in par[chave])
+            media = par[f"{chave}_media"] * 100
+            print(f"   {nome:<14}{vals}{media:9.2f}%")
+
+        caminho = os.path.join(output_dir, f"confusao_{rede['slug']}.png")
+        salvar_grafico_confusao(cm, caminho,
+                                f"Matriz de Confusao - {rede['nome']}")
+        print(f"   Grafico salvo em: {caminho}")
+
+        resultados.append({**rede, "cm": cm, "parametros": par})
 
     return resultados
 
@@ -438,20 +714,14 @@ def main():
     print(f"  EQM inicial        : {eqm_list[0]:.8f}")
     print(f"  EQM final          : {eqm_list[-1]:.8f}")
 
-    # Grafico EQM x Epocas (etapa 4 para a rede da etapa 1)
-    salvar_grafico_eqm(
-        eqm_list,
-        os.path.join(output_dir, "eqm_etapa1.png"),
-        "EQM x Epocas - Rede da Etapa 1"
-    )
+    # Guarda a curva de EQM da etapa 1 para tracar o grafico na etapa 4
+    eqm_list_e1 = eqm_list
 
     # Verificacao rapida nos proprios dados de treino (sanidade)
     y_train_pos = pos_processar(mlp.predict(X_train))
     acertos_treino = np.sum(np.all(y_train_pos == y_train.astype(int), axis=1))
     print(f"  Acertos no treino  : {acertos_treino}/{len(X_train)} "
           f"({100.0 * acertos_treino / len(X_train):.2f}%)")
-
-    print("\n  Grafico EQM salvo em:", os.path.join(output_dir, "eqm_etapa1.png"))
 
     # -------------------------------------------------------------------------
     # ETAPA 2 - Validacao da rede e preenchimento da Tabela 1
@@ -505,6 +775,44 @@ def main():
     for r in resultados_e3:
         print(f"{r['rede']:>5} | {r['epocas']:>7} | {r['eqm_final']:>12.8f} | "
               f"{r['n_acertos']:>3}/{r['n_val']:<6} | {r['taxa']:>6.2f}%")
+
+    # -------------------------------------------------------------------------
+    # ETAPA 4 - Grafico do EQM em funcao de cada epoca de treinamento
+    #           para as redes das etapas 1 e 3
+    # -------------------------------------------------------------------------
+    print("\n" + "=" * 60)
+    print("ETAPA 4 - GRAFICOS DO EQM x EPOCAS (ETAPAS 1 E 3)")
+    print("=" * 60)
+
+    etapa4_graficos_eqm(eqm_list_e1, resultados_e3, output_dir)
+
+    # -------------------------------------------------------------------------
+    # ETAPA 5 - Matriz de confusao e parametros de classificacao por rede
+    # -------------------------------------------------------------------------
+    print("\n" + "=" * 60)
+    print("ETAPA 5 - MATRIZ DE CONFUSAO E PARAMETROS POR REDE")
+    print("=" * 60)
+
+    # Monta a lista de todas as redes desenvolvidas: a da etapa 1 e as 5 da
+    # etapa 3, cada uma avaliada no seu respectivo conjunto de validacao.
+    redes_avaliacao = [
+        {"nome": "Rede da Etapa 1", "slug": "etapa1",
+         "y_true": y_val, "y_pred": y_val_pred},
+    ]
+    for r in resultados_e3:
+        redes_avaliacao.append({
+            "nome": f"Etapa 3 / Rede {r['rede']}",
+            "slug": f"etapa3_rede{r['rede']}",
+            "y_true": r["y_val"],
+            "y_pred": r["y_val_pred"],
+        })
+
+    resultados_e5 = etapa5_metricas(redes_avaliacao, output_dir)
+
+    # Planilha Excel com os parametros e as matrizes de confusao (etapa 5)
+    planilha_e5_path = os.path.join(base_dir, "Etapa5_metricas.xlsx")
+    gerar_planilha_etapa5(resultados_e5, planilha_e5_path)
+    print(f"\n  Planilha Excel da etapa 5 salva em: {planilha_e5_path}")
 
 
 if __name__ == "__main__":
