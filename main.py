@@ -1,22 +1,83 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 
 
 # =============================================================================
-# Leitura dos dados
+# Conjuntos de dados (embutidos como vetores)
+#
+# Cada linha = [x1, x2, x3, x4, d1, d2, d3]
+#   x1 - teor de agua
+#   x2 - grau de acidez
+#   x3 - temperatura
+#   x4 - tensao superficial
+#   d1, d2, d3 - saida desejada (codificacao one-hot do conservante A, B ou C)
+#
+# Tipo A -> [1, 0, 0]   Tipo B -> [0, 1, 0]   Tipo C -> [0, 0, 1]
 # =============================================================================
 
-def load_data(filepath):
-    """Le arquivo .txt com cabecalho e retorna array numpy."""
-    data = []
-    with open(filepath, 'r') as f:
-        lines = f.readlines()
-    for line in lines[1:]:  # pula cabecalho
-        values = line.strip().split()
-        if values:
-            data.append([float(v) for v in values])
-    return np.array(data)
+# Subconjunto de TREINAMENTO (130 amostras)
+dados_treinamento = np.array([
+    [0.3841, 0.2021, 0.0000, 0.2438, 1.0000, 0.0000, 0.0000], [0.1765, 0.1613, 0.3401, 0.0843, 1.0000, 0.0000, 0.0000], [0.3170, 0.5786, 0.3387, 0.4192, 0.0000, 1.0000, 0.0000],
+    [0.2467, 0.0337, 0.2699, 0.3454, 1.0000, 0.0000, 0.0000], [0.6102, 0.8192, 0.4679, 0.4762, 0.0000, 1.0000, 0.0000], [0.7030, 0.7784, 0.7482, 0.6562, 0.0000, 0.0000, 1.0000],
+    [0.4767, 0.4348, 0.4852, 0.3640, 0.0000, 1.0000, 0.0000], [0.7589, 0.8256, 0.6514, 0.6143, 0.0000, 0.0000, 1.0000], [0.1579, 0.3641, 0.2551, 0.2919, 1.0000, 0.0000, 0.0000],
+    [0.5561, 0.5602, 0.5605, 0.2105, 0.0000, 1.0000, 0.0000], [0.3267, 0.2974, 0.0343, 0.1466, 1.0000, 0.0000, 0.0000], [0.2303, 0.0942, 0.3889, 0.1713, 1.0000, 0.0000, 0.0000],
+    [0.2953, 0.2963, 0.2600, 0.3039, 1.0000, 0.0000, 0.0000], [0.5797, 0.4789, 0.5780, 0.3048, 0.0000, 1.0000, 0.0000], [0.5860, 0.5250, 0.4792, 0.4021, 0.0000, 1.0000, 0.0000],
+    [0.7045, 0.6933, 0.6449, 0.6623, 0.0000, 0.0000, 1.0000], [0.9134, 0.9412, 0.6078, 0.5934, 0.0000, 0.0000, 1.0000], [0.2333, 0.4943, 0.2525, 0.2567, 1.0000, 0.0000, 0.0000],
+    [0.2676, 0.4172, 0.2775, 0.2721, 1.0000, 0.0000, 0.0000], [0.4850, 0.5506, 0.5269, 0.6036, 0.0000, 1.0000, 0.0000], [0.2434, 0.2567, 0.2312, 0.2624, 1.0000, 0.0000, 0.0000],
+    [0.1250, 0.3023, 0.1826, 0.3168, 1.0000, 0.0000, 0.0000], [0.5598, 0.4253, 0.4258, 0.3192, 0.0000, 1.0000, 0.0000], [0.5738, 0.7674, 0.6154, 0.4447, 0.0000, 0.0000, 1.0000],
+    [0.5692, 0.8368, 0.5832, 0.4585, 0.0000, 0.0000, 1.0000], [0.4655, 0.7682, 0.3221, 0.2940, 0.0000, 1.0000, 0.0000], [0.5568, 0.7592, 0.6293, 0.5453, 0.0000, 1.0000, 0.0000],
+    [0.8842, 0.7509, 0.5723, 0.5814, 0.0000, 0.0000, 1.0000], [0.7959, 0.9243, 0.7339, 0.7334, 0.0000, 0.0000, 1.0000], [0.7124, 0.7128, 0.6065, 0.6668, 0.0000, 0.0000, 1.0000],
+    [0.6749, 0.8767, 0.6543, 0.7461, 0.0000, 0.0000, 1.0000], [0.3674, 0.4359, 0.4230, 0.2965, 1.0000, 0.0000, 0.0000], [0.3473, 0.0754, 0.2183, 0.1905, 1.0000, 0.0000, 0.0000],
+    [0.6931, 0.5188, 0.5386, 0.5794, 0.0000, 1.0000, 0.0000], [0.6439, 0.4959, 0.4322, 0.4582, 0.0000, 1.0000, 0.0000], [0.5627, 0.4893, 0.6831, 0.5120, 0.0000, 1.0000, 0.0000],
+    [0.5182, 0.7553, 0.6368, 0.4538, 0.0000, 1.0000, 0.0000], [0.6046, 0.7479, 0.6542, 0.4375, 0.0000, 1.0000, 0.0000], [0.6328, 0.6786, 0.7751, 0.6183, 0.0000, 0.0000, 1.0000],
+    [0.3429, 0.4694, 0.2855, 0.2977, 1.0000, 0.0000, 0.0000], [0.6371, 0.5069, 0.5316, 0.4520, 0.0000, 1.0000, 0.0000], [0.6388, 0.6970, 0.6407, 0.7677, 0.0000, 0.0000, 1.0000],
+    [0.3529, 0.5504, 0.3706, 0.4828, 0.0000, 1.0000, 0.0000], [0.4302, 0.3237, 0.6397, 0.4319, 0.0000, 1.0000, 0.0000], [0.7078, 0.9604, 0.7470, 0.6399, 0.0000, 0.0000, 1.0000],
+    [0.7350, 0.8170, 0.7227, 0.6279, 0.0000, 0.0000, 1.0000], [0.7011, 0.2946, 0.6625, 0.4312, 0.0000, 1.0000, 0.0000], [0.5961, 0.3817, 0.6363, 0.3663, 0.0000, 1.0000, 0.0000],
+    [0.0000, 0.2563, 0.2603, 0.3027, 1.0000, 0.0000, 0.0000], [0.5996, 0.5704, 0.6965, 0.6548, 0.0000, 0.0000, 1.0000], [0.4289, 0.3709, 0.3994, 0.3656, 0.0000, 1.0000, 0.0000],
+    [0.2093, 0.3655, 0.3334, 0.1802, 1.0000, 0.0000, 0.0000], [0.2335, 0.2856, 0.3912, 0.1601, 1.0000, 0.0000, 0.0000], [0.3266, 0.7751, 0.4356, 0.3448, 0.0000, 1.0000, 0.0000],
+    [0.2457, 0.1203, 0.1228, 0.2206, 1.0000, 0.0000, 0.0000], [0.4656, 0.4815, 0.4211, 0.4862, 0.0000, 1.0000, 0.0000], [0.7511, 0.8868, 0.5408, 0.6253, 0.0000, 0.0000, 1.0000],
+    [0.7825, 0.9386, 0.6510, 0.6996, 0.0000, 0.0000, 1.0000], [0.3463, 0.4118, 0.2507, 0.0454, 1.0000, 0.0000, 0.0000], [0.5172, 0.1482, 0.3172, 0.2323, 1.0000, 0.0000, 0.0000],
+    [0.6942, 0.4516, 0.5387, 0.5983, 0.0000, 1.0000, 0.0000], [0.7586, 0.7017, 0.7120, 0.7509, 0.0000, 0.0000, 1.0000], [0.6880, 0.6004, 0.6602, 0.4320, 0.0000, 1.0000, 0.0000],
+    [0.4742, 0.5079, 0.4135, 0.4161, 0.0000, 1.0000, 0.0000], [0.4419, 0.5761, 0.4515, 0.4497, 0.0000, 1.0000, 0.0000], [0.3367, 0.4333, 0.2336, 0.1678, 1.0000, 0.0000, 0.0000],
+    [0.4744, 0.4604, 0.1507, 0.4873, 1.0000, 0.0000, 0.0000], [0.7510, 0.4350, 0.5453, 0.4831, 0.0000, 1.0000, 0.0000], [0.4045, 0.5636, 0.2534, 0.5573, 0.0000, 1.0000, 0.0000],
+    [0.1449, 0.1539, 0.2446, 0.0559, 1.0000, 0.0000, 0.0000], [0.3460, 0.2722, 0.1866, 0.5049, 1.0000, 0.0000, 0.0000], [0.2241, 0.2046, 0.3575, 0.2891, 1.0000, 0.0000, 0.0000],
+    [0.1412, 0.2264, 0.4025, 0.2661, 1.0000, 0.0000, 0.0000], [0.5782, 0.6418, 0.7212, 0.6396, 0.0000, 0.0000, 1.0000], [0.9153, 0.6571, 0.8229, 0.6689, 0.0000, 0.0000, 1.0000],
+    [0.6014, 0.7664, 0.6385, 0.5513, 0.0000, 0.0000, 1.0000], [0.7328, 0.8708, 0.8812, 0.7060, 0.0000, 0.0000, 1.0000], [0.4270, 0.6352, 0.6811, 0.3884, 0.0000, 1.0000, 0.0000],
+    [0.6189, 0.1652, 0.4016, 0.3042, 1.0000, 0.0000, 0.0000], [0.2143, 0.3868, 0.1926, 0.0000, 1.0000, 0.0000, 0.0000], [0.5696, 0.7238, 0.7199, 0.6677, 0.0000, 0.0000, 1.0000],
+    [0.8656, 0.6700, 0.6570, 0.6065, 0.0000, 0.0000, 1.0000], [0.9002, 0.6858, 0.7409, 0.7047, 0.0000, 0.0000, 1.0000], [0.4167, 0.5255, 0.5506, 0.4093, 0.0000, 1.0000, 0.0000],
+    [0.8325, 0.4804, 0.7990, 0.7471, 0.0000, 0.0000, 1.0000], [0.4124, 0.1191, 0.4720, 0.3184, 1.0000, 0.0000, 0.0000], [1.0000, 1.0000, 0.7924, 0.7074, 0.0000, 0.0000, 1.0000],
+    [0.5685, 0.6924, 0.6180, 0.5792, 0.0000, 1.0000, 0.0000], [0.6505, 0.4864, 0.2972, 0.4599, 0.0000, 1.0000, 0.0000], [0.8124, 0.7690, 0.9720, 1.0000, 0.0000, 0.0000, 1.0000],
+    [0.9013, 0.7160, 1.0000, 0.8046, 0.0000, 0.0000, 1.0000], [0.8872, 0.7556, 0.9307, 0.6791, 0.0000, 0.0000, 1.0000], [0.3708, 0.2139, 0.2136, 0.4295, 1.0000, 0.0000, 0.0000],
+    [0.5159, 0.4349, 0.3715, 0.4086, 0.0000, 1.0000, 0.0000], [0.6768, 0.6304, 0.8044, 0.4885, 0.0000, 0.0000, 1.0000], [0.1664, 0.2404, 0.2000, 0.3425, 1.0000, 0.0000, 0.0000],
+    [0.2495, 0.2807, 0.4679, 0.2200, 1.0000, 0.0000, 0.0000], [0.2487, 0.2348, 0.0913, 0.1281, 1.0000, 0.0000, 0.0000], [0.5748, 0.8552, 0.5973, 0.7317, 0.0000, 0.0000, 1.0000],
+    [0.3858, 0.7585, 0.3239, 0.3565, 0.0000, 1.0000, 0.0000], [0.3329, 0.4946, 0.5614, 0.3152, 0.0000, 1.0000, 0.0000], [0.3891, 0.4805, 0.7598, 0.4231, 0.0000, 1.0000, 0.0000],
+    [0.2888, 0.4888, 0.1930, 0.0177, 1.0000, 0.0000, 0.0000], [0.3827, 0.4900, 0.2272, 0.3599, 0.0000, 1.0000, 0.0000], [0.6047, 0.4224, 0.6274, 0.5809, 0.0000, 1.0000, 0.0000],
+    [0.9840, 0.7031, 0.6469, 0.4701, 0.0000, 0.0000, 1.0000], [0.6554, 0.6785, 0.9279, 0.7723, 0.0000, 0.0000, 1.0000], [0.0466, 0.3388, 0.0840, 0.0762, 1.0000, 0.0000, 0.0000],
+    [0.6154, 0.8196, 0.6339, 0.7729, 0.0000, 0.0000, 1.0000], [0.8452, 0.8897, 0.8383, 0.6961, 0.0000, 0.0000, 1.0000], [0.6927, 0.7870, 0.7689, 0.7213, 0.0000, 0.0000, 1.0000],
+    [0.4032, 0.6188, 0.4930, 0.5380, 0.0000, 1.0000, 0.0000], [0.4006, 0.3094, 0.3868, 0.0811, 1.0000, 0.0000, 0.0000], [0.7416, 0.7138, 0.6823, 0.6067, 0.0000, 0.0000, 1.0000],
+    [0.7404, 0.6764, 0.8293, 0.4694, 0.0000, 0.0000, 1.0000], [0.7736, 0.7097, 0.6826, 0.8142, 0.0000, 0.0000, 1.0000], [0.5823, 0.9635, 0.3706, 0.5636, 0.0000, 1.0000, 0.0000],
+    [0.2081, 0.3738, 0.3119, 0.3552, 1.0000, 0.0000, 0.0000], [0.5616, 0.8972, 0.5186, 0.6650, 0.0000, 0.0000, 1.0000], [0.6594, 0.8907, 0.6000, 0.7157, 0.0000, 0.0000, 1.0000],
+    [0.3979, 0.3070, 0.3637, 0.1220, 1.0000, 0.0000, 0.0000], [0.2644, 0.0000, 0.3572, 0.1931, 1.0000, 0.0000, 0.0000], [0.4816, 0.4791, 0.4213, 0.5889, 0.0000, 1.0000, 0.0000],
+    [0.0848, 0.0749, 0.4349, 0.3328, 1.0000, 0.0000, 0.0000], [0.4608, 0.6775, 0.3533, 0.3016, 0.0000, 1.0000, 0.0000], [0.4155, 0.6589, 0.5310, 0.5404, 0.0000, 1.0000, 0.0000],
+    [0.3934, 0.6244, 0.4817, 0.4324, 0.0000, 1.0000, 0.0000], [0.5843, 0.8517, 0.8576, 0.7133, 0.0000, 0.0000, 1.0000], [0.1995, 0.3690, 0.3537, 0.3462, 1.0000, 0.0000, 0.0000],
+    [0.3832, 0.2321, 0.0341, 0.2450, 1.0000, 0.0000, 0.0000],
+])
+
+# Subconjunto de VALIDACAO (18 amostras) - corresponde a Tabela 1 do enunciado
+dados_validacao = np.array([
+    [0.8622, 0.7101, 0.6236, 0.7894, 0.0000, 0.0000, 1.0000], [0.2741, 0.1552, 0.1333, 0.1516, 1.0000, 0.0000, 0.0000], [0.6772, 0.8516, 0.6543, 0.7573, 0.0000, 0.0000, 1.0000],
+    [0.2178, 0.5039, 0.6415, 0.5039, 0.0000, 1.0000, 0.0000], [0.7260, 0.7500, 0.7007, 0.4953, 0.0000, 0.0000, 1.0000], [0.2473, 0.2941, 0.4248, 0.3087, 1.0000, 0.0000, 0.0000],
+    [0.5682, 0.5683, 0.5054, 0.4426, 0.0000, 1.0000, 0.0000], [0.6566, 0.6715, 0.4952, 0.3951, 0.0000, 1.0000, 0.0000], [0.0705, 0.4717, 0.2921, 0.2954, 1.0000, 0.0000, 0.0000],
+    [0.1187, 0.2568, 0.3140, 0.3037, 1.0000, 0.0000, 0.0000], [0.5673, 0.7011, 0.4083, 0.5552, 0.0000, 1.0000, 0.0000], [0.3164, 0.2251, 0.3526, 0.2560, 1.0000, 0.0000, 0.0000],
+    [0.7884, 0.9568, 0.6825, 0.6398, 0.0000, 0.0000, 1.0000], [0.9633, 0.7850, 0.6777, 0.6059, 0.0000, 0.0000, 1.0000], [0.7739, 0.8505, 0.7934, 0.6626, 0.0000, 0.0000, 1.0000],
+    [0.4219, 0.4136, 0.1408, 0.0940, 1.0000, 0.0000, 0.0000], [0.6616, 0.4365, 0.6597, 0.8129, 0.0000, 0.0000, 1.0000], [0.7325, 0.4761, 0.3888, 0.5683, 0.0000, 1.0000, 0.0000],
+])
+
+# Conjunto UNICO (validacao cruzada da etapa 3): treinamento + validacao = 148 amostras
+dados_completos = np.vstack([dados_treinamento, dados_validacao])
 
 
 # =============================================================================
@@ -55,56 +116,55 @@ class MLP:
         a2 = sigmoid(z2)
         return a2
 
-    def train(self, X, y, epsilon=1e-6, max_epochs=10000):
+    def eqm(self, X, y):
+        """Erro Quadratico Medio na definicao do livro (Silva et al.):
+        EQM = (1/p) * Sum_k [ (1/2) * Sum_j (d_j(k) - Y_j(k))^2 ]"""
+        saidas = self.forward(X)
+        return np.sum(0.5 * np.sum((y - saidas) ** 2, axis=1)) / len(X)
+
+    def train(self, X, y, epsilon=1e-6, max_epochs=20000, min_epochs=200, patience=3):
+        # min_epochs: ignora o criterio de parada nas primeiras epocas para nao
+        #   parar prematuramente no plato inicial do gradiente por lote.
+        # patience: o criterio |dEQM| <= epsilon precisa se manter por 'patience'
+        #   epocas consecutivas, evitando parada em regioes de sela transitorias.
         eqm_list = []
-        n_amostras = len(X)
         eqm_anterior = float('inf')
+        consecutivas = 0
 
         for epoch in range(max_epochs):
 
-            # Embaralha as amostras a cada epoca
-            indices = np.arange(n_amostras)
-            np.random.shuffle(indices)
-            X_shuffled = X[indices]
-            y_shuffled = y[indices]
+            # ----- Forward (todo o conjunto de treino de uma vez) -----
+            a1 = sigmoid(np.dot(X, self.W1) + self.b1)
+            a2 = sigmoid(np.dot(a1, self.W2) + self.b2)
 
-            # Atualizacao amostra por amostra (SGD)
-            for i in range(n_amostras):
-                x_i = X_shuffled[i:i+1]
-                y_i = y_shuffled[i:i+1]
+            # ----- Backward (gradiente acumulado sobre todas as amostras) -----
+            erro = y - a2
+            delta_output = erro * sigmoid_deriv(a2)
+            error_hidden = np.dot(delta_output, self.W2.T)
+            delta_hidden = error_hidden * sigmoid_deriv(a1)
 
-                # Forward pass
-                z1 = np.dot(x_i, self.W1) + self.b1
-                a1 = sigmoid(z1)
-                z2 = np.dot(a1, self.W2) + self.b2
-                a2 = sigmoid(z2)
+            # ----- Atualizacao por LOTE (uma unica vez por epoca) -----
+            self.W2 += self.learning_rate * np.dot(a1.T, delta_output)
+            self.b2 += self.learning_rate * np.sum(delta_output, axis=0)
+            self.W1 += self.learning_rate * np.dot(X.T, delta_hidden)
+            self.b1 += self.learning_rate * np.sum(delta_hidden, axis=0)
 
-                # Erro por amostra
-                erro = y_i - a2
-
-                # Backward pass
-                delta_output = erro * sigmoid_deriv(a2)
-                error_hidden = np.dot(delta_output, self.W2.T)
-                delta_hidden = error_hidden * sigmoid_deriv(a1)
-
-                # Atualizacao dos pesos e bias
-                self.W2 += self.learning_rate * np.dot(a1.T, delta_output)
-                self.b2 += self.learning_rate * np.sum(delta_output, axis=0)
-                self.W1 += self.learning_rate * np.dot(x_i.T, delta_hidden)
-                self.b1 += self.learning_rate * np.sum(delta_hidden, axis=0)
-
-            # EQM da epoca sobre todo o conjunto de treino
-            todas_estimativas = self.forward(X)
-            eqm_atual = np.mean((y - todas_estimativas) ** 2)
+            # EQM da epoca (definicao do livro) apos a atualizacao dos pesos
+            eqm_atual = self.eqm(X, y)
             eqm_list.append(eqm_atual)
 
-            if epoch % 100 == 0:
+            if epoch % 200 == 0:
                 print(f"    Epoca {epoch:5d} - EQM = {eqm_atual:.8f}")
 
-            # Criterio de parada: variacao do EQM entre epocas
+            # Criterio de parada: variacao do EQM entre epocas <= epsilon,
+            # mantida por 'patience' epocas consecutivas e somente apos min_epochs.
             variacao = abs(eqm_atual - eqm_anterior)
-            if variacao <= epsilon:
-                break
+            if epoch >= min_epochs and variacao <= epsilon:
+                consecutivas += 1
+                if consecutivas >= patience:
+                    break
+            else:
+                consecutivas = 0
             eqm_anterior = eqm_atual
 
         return eqm_list, epoch + 1
@@ -114,8 +174,13 @@ class MLP:
 
 
 # =============================================================================
-# Metricas de avaliacao
+# Pos-processamento e metricas de avaliacao
 # =============================================================================
+
+def pos_processar(y_pred):
+    """Criterio do enunciado: y_pos = 1 se y >= 0.5, senao 0."""
+    return (y_pred >= 0.5).astype(int)
+
 
 def confusion_matrix_3class(y_true, y_pred):
     """Matriz de confusao 3x3 baseada em argmax (one-hot -> classe)."""
@@ -147,6 +212,89 @@ def metrics_from_cm(cm):
     return acuracia, precisao, recall
 
 
+def contar_acertos(y_true, y_pos):
+    """Conta amostras cujo vetor pos-processado bate exatamente com o desejado."""
+    acertos = np.all(y_pos == y_true.astype(int), axis=1)
+    return int(np.sum(acertos)), acertos
+
+
+# =============================================================================
+# Geracao da planilha Excel (Tabela 1 do enunciado)
+# =============================================================================
+
+def gerar_planilha_tabela1(X_val, y_val, y_pos, taxa_acertos, output_path):
+    """Cria a planilha .xlsx no formato da Tabela 1 do PP04 e a preenche com
+    as entradas, as saidas desejadas e as saidas pos-processadas da validacao."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Tabela 1 - Validacao"
+
+    # --- Estilos ---
+    fonte_titulo  = Font(bold=True, size=12)
+    fonte_cabec   = Font(bold=True, color="FFFFFF")
+    preench_cabec = PatternFill("solid", fgColor="4472C4")
+    preench_acerto = PatternFill("solid", fgColor="C6EFCE")  # verde claro
+    preench_erro   = PatternFill("solid", fgColor="FFC7CE")  # vermelho claro
+    centro = Alignment(horizontal="center", vertical="center")
+    borda = Border(*(4 * (Side(style="thin", color="999999"),)))
+
+    colunas = ["Amostra", "x1", "x2", "x3", "x4",
+               "d1", "d2", "d3", "y1_pos", "y2_pos", "y3_pos"]
+
+    # --- Titulo ---
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(colunas))
+    titulo_cell = ws.cell(row=1, column=1, value="Tabela 1: Validacao da rede PMC da etapa 1")
+    titulo_cell.font = fonte_titulo
+    titulo_cell.alignment = centro
+
+    # --- Cabecalho ---
+    for j, nome in enumerate(colunas, start=1):
+        c = ws.cell(row=2, column=j, value=nome)
+        c.font = fonte_cabec
+        c.fill = preench_cabec
+        c.alignment = centro
+        c.border = borda
+
+    # --- Linhas de dados ---
+    _, acertos = contar_acertos(y_val, y_pos)
+    for i in range(len(X_val)):
+        linha = 3 + i
+        valores = [i + 1,
+                   *[round(float(v), 4) for v in X_val[i]],
+                   *[int(v) for v in y_val[i]],
+                   *[int(v) for v in y_pos[i]]]
+        for j, val in enumerate(valores, start=1):
+            c = ws.cell(row=linha, column=j, value=val)
+            c.alignment = centro
+            c.border = borda
+        # destaca a amostra inteira conforme acerto/erro
+        fill = preench_acerto if acertos[i] else preench_erro
+        for j in range(9, 12):  # colunas das saidas pos-processadas
+            ws.cell(row=linha, column=j).fill = fill
+
+    # --- Linha de total de acertos ---
+    linha_total = 3 + len(X_val)
+    ws.merge_cells(start_row=linha_total, start_column=1,
+                   end_row=linha_total, end_column=8)
+    c = ws.cell(row=linha_total, column=1, value="Total de acertos (%)")
+    c.font = Font(bold=True)
+    c.alignment = centro
+    c.border = borda
+    ws.merge_cells(start_row=linha_total, start_column=9,
+                   end_row=linha_total, end_column=11)
+    c_val = ws.cell(row=linha_total, column=9, value=round(taxa_acertos, 2))
+    c_val.font = Font(bold=True)
+    c_val.alignment = centro
+    c_val.border = borda
+
+    # --- Largura das colunas ---
+    ws.column_dimensions["A"].width = 10
+    for col in ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]:
+        ws.column_dimensions[col].width = 9
+
+    wb.save(output_path)
+
+
 # =============================================================================
 # Graficos
 # =============================================================================
@@ -164,33 +312,13 @@ def salvar_grafico_eqm(eqm_list, output_path, titulo):
     plt.close()
 
 
-def salvar_grafico_validacao(y_true, y_pred, output_path, titulo):
-    """Plota classe predita vs classe desejada para cada amostra de validacao."""
-    true_classes = np.argmax(y_true, axis=1) + 1
-    pred_classes = np.argmax(y_pred, axis=1) + 1
-    amostras = np.arange(1, len(y_true) + 1)
-
-    plt.figure(figsize=(9, 5))
-    plt.plot(amostras, true_classes, 'o-', label="Classe desejada", color='blue')
-    plt.plot(amostras, pred_classes, 's--', label="Classe estimada", color='red')
-    plt.title(titulo)
-    plt.xlabel("Amostras de validacao")
-    plt.ylabel("Classe")
-    plt.yticks([1, 2, 3], ['Classe 1', 'Classe 2', 'Classe 3'])
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300)
-    plt.close()
-
-
 def salvar_grafico_confusao(cm, output_path, titulo):
     """Plota a matriz de confusao como heatmap."""
     fig, ax = plt.subplots(figsize=(5, 4.5))
     im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
     plt.colorbar(im, ax=ax)
 
-    classes = ['Classe 1', 'Classe 2', 'Classe 3']
+    classes = ['Tipo A', 'Tipo B', 'Tipo C']
     tick_marks = np.arange(len(classes))
     ax.set_xticks(tick_marks)
     ax.set_xticklabels(classes, rotation=45)
@@ -214,24 +342,78 @@ def salvar_grafico_confusao(cm, output_path, titulo):
 
 
 # =============================================================================
-# Main
+# Etapa 3 - Validacao cruzada (5 treinamentos com split aleatorio 80/20)
+# =============================================================================
+
+def etapa3_validacao_cruzada(dados, output_dir, n_redes=5, proporcao_treino=0.8):
+    """Executa n_redes treinamentos. Em cada um, sorteia aleatoriamente
+    proporcao_treino das amostras para treino e o restante para validacao.
+    Sem semente fixa: cada execucao do programa gera divisoes diferentes."""
+    n_total = len(dados)
+    n_treino = int(round(proporcao_treino * n_total))
+    n_val = n_total - n_treino
+
+    print(f"  Conjunto unico: {n_total} amostras "
+          f"({n_treino} treino / {n_val} validacao por rede)\n")
+
+    resultados = []
+
+    for i in range(n_redes):
+        # Sorteio aleatorio das amostras (embaralha todos os indices e fatia)
+        indices = np.random.permutation(n_total)
+        idx_treino = indices[:n_treino]
+        idx_val = indices[n_treino:]
+
+        X_train = dados[idx_treino, :4]
+        y_train = dados[idx_treino, 4:]
+        X_val = dados[idx_val, :4]
+        y_val = dados[idx_val, 4:]
+
+        print(f"-- Rede {i+1} --")
+        mlp = MLP(input_size=4, hidden_size=15, output_size=3, learning_rate=0.1)
+        eqm_list, n_epocas = mlp.train(X_train, y_train, epsilon=1e-6, max_epochs=10000)
+
+        # Validacao com pos-processamento
+        y_val_pos = pos_processar(mlp.predict(X_val))
+        n_acertos, _ = contar_acertos(y_val, y_val_pos)
+        taxa = 100.0 * n_acertos / n_val
+
+        print(f"   Epocas para convergir : {n_epocas}")
+        print(f"   EQM final             : {eqm_list[-1]:.8f}")
+        print(f"   Total de acertos      : {n_acertos}/{n_val} ({taxa:.2f}%)\n")
+
+        # Grafico EQM x Epocas desta rede (usado tambem na etapa 4)
+        salvar_grafico_eqm(
+            eqm_list,
+            os.path.join(output_dir, f"eqm_etapa3_rede{i+1}.png"),
+            f"EQM x Epocas - Etapa 3 / Rede {i+1}"
+        )
+
+        resultados.append({
+            "rede": i + 1,
+            "epocas": n_epocas,
+            "eqm_final": eqm_list[-1],
+            "n_acertos": n_acertos,
+            "n_val": n_val,
+            "taxa": taxa,
+            "eqm_list": eqm_list,
+        })
+
+    return resultados
+
+
+# =============================================================================
+# Main - Etapa 1: Treinamento da rede PMC
 # =============================================================================
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-
-    treino_path    = os.path.join(base_dir, "PP04_dados_treinamento.txt")
-    validacao_path = os.path.join(base_dir, "PP04_dados_validacao.txt")
-    output_dir     = os.path.join(base_dir, "graphics")
+    output_dir = os.path.join(base_dir, "graphics")
     os.makedirs(output_dir, exist_ok=True)
 
-    # Carrega dados dos arquivos
-    dados_treino    = load_data(treino_path)
-    dados_validacao = load_data(validacao_path)
-
-    X_train = dados_treino[:, :4]       # entradas x1..x4
-    y_train = dados_treino[:, 4:]       # saidas  d1, d2, d3
-
+    # Separa entradas (x1..x4) e saidas desejadas (d1, d2, d3)
+    X_train = dados_treinamento[:, :4]
+    y_train = dados_treinamento[:, 4:]
     X_val   = dados_validacao[:, :4]
     y_val   = dados_validacao[:, 4:]
 
@@ -239,87 +421,90 @@ def main():
     print(f"Amostras de validacao   : {X_val.shape[0]}")
     print(f"Entradas: {X_train.shape[1]}  |  Saidas: {y_train.shape[1]}\n")
 
-    redes       = []
-    eqms_finais = []
-    epocas_list = []
-
+    # -------------------------------------------------------------------------
+    # ETAPA 1 - Treinamento da rede PMC
+    # Topologia: 4 entradas - 15 neuronios ocultos - 3 saidas
+    # Funcao de ativacao logistica, eta = 0.1, epsilon = 1e-6
+    # -------------------------------------------------------------------------
     print("=" * 60)
-    print("INICIANDO OS 5 TREINAMENTOS")
+    print("ETAPA 1 - TREINAMENTO DA REDE PMC")
     print("=" * 60)
 
-    for i in range(5):
-        print(f"\n-- Treinamento T{i+1} --")
+    mlp = MLP(input_size=4, hidden_size=15, output_size=3, learning_rate=0.1)
+    eqm_list, n_epocas = mlp.train(X_train, y_train, epsilon=1e-6, max_epochs=10000)
 
-        mlp = MLP(input_size=4, hidden_size=10, output_size=3, learning_rate=0.1)
-        eqm_list, n_epocas = mlp.train(X_train, y_train, epsilon=1e-6, max_epochs=10000)
+    print(f"\n  Treinamento concluido.")
+    print(f"  Epocas             : {n_epocas}")
+    print(f"  EQM inicial        : {eqm_list[0]:.8f}")
+    print(f"  EQM final          : {eqm_list[-1]:.8f}")
 
-        redes.append(mlp)
-        eqms_finais.append(eqm_list[-1])
-        epocas_list.append(n_epocas)
+    # Grafico EQM x Epocas (etapa 4 para a rede da etapa 1)
+    salvar_grafico_eqm(
+        eqm_list,
+        os.path.join(output_dir, "eqm_etapa1.png"),
+        "EQM x Epocas - Rede da Etapa 1"
+    )
 
-        print(f"  T{i+1}: EQM final = {eqm_list[-1]:.8f} | Epocas = {n_epocas}")
+    # Verificacao rapida nos proprios dados de treino (sanidade)
+    y_train_pos = pos_processar(mlp.predict(X_train))
+    acertos_treino = np.sum(np.all(y_train_pos == y_train.astype(int), axis=1))
+    print(f"  Acertos no treino  : {acertos_treino}/{len(X_train)} "
+          f"({100.0 * acertos_treino / len(X_train):.2f}%)")
 
-        # Grafico EQM x Epocas
-        salvar_grafico_eqm(
-            eqm_list,
-            os.path.join(output_dir, f"eqm_treinamento_T{i+1}.png"),
-            f"EQM - Treinamento T{i+1}"
-        )
+    print("\n  Grafico EQM salvo em:", os.path.join(output_dir, "eqm_etapa1.png"))
 
-        # Validacao
-        y_pred = mlp.predict(X_val)
-
-        cm = confusion_matrix_3class(y_val, y_pred)
-        acuracia, precisao, recall = metrics_from_cm(cm)
-
-        print(f"\n  Validacao T{i+1}:")
-        print(f"  Matriz de Confusao:\n{cm}")
-        print(f"  Acuracia: {acuracia:.4f}")
-        for cls in range(3):
-            print(f"  Classe {cls+1} -> Precisao: {precisao[cls]:.4f}  |  Recall: {recall[cls]:.4f}")
-
-        # Grafico classe predita vs desejada
-        salvar_grafico_validacao(
-            y_val, y_pred,
-            os.path.join(output_dir, f"validacao_T{i+1}.png"),
-            f"Validacao T{i+1}"
-        )
-
-        # Grafico matriz de confusao
-        salvar_grafico_confusao(
-            cm,
-            os.path.join(output_dir, f"confusao_T{i+1}.png"),
-            f"Matriz de Confusao - T{i+1}"
-        )
-
-    # ==========================================================================
-    # Resumo final
-    # ==========================================================================
+    # -------------------------------------------------------------------------
+    # ETAPA 2 - Validacao da rede e preenchimento da Tabela 1
+    # Pos-processamento: y_pos = 1 se y >= 0.5, senao 0
+    # -------------------------------------------------------------------------
     print("\n" + "=" * 60)
-    print("RESUMO DOS 5 TREINAMENTOS")
+    print("ETAPA 2 - VALIDACAO DA REDE (TABELA 1)")
     print("=" * 60)
 
-    melhor_idx = int(np.argmin(eqms_finais))
-    for i in range(5):
-        marca = " <-- MELHOR" if i == melhor_idx else ""
-        print(f"  T{i+1}: EQM = {eqms_finais[i]:.8f} | Epocas = {epocas_list[i]}{marca}")
+    y_val_pred = mlp.predict(X_val)
+    y_val_pos  = pos_processar(y_val_pred)
 
-    print(f"\nMelhor rede: T{melhor_idx + 1}")
+    n_acertos, acertos = contar_acertos(y_val, y_val_pos)
+    taxa_acertos = 100.0 * n_acertos / len(X_val)
 
-    # Grafico comparativo de EQMs finais
-    plt.figure(figsize=(8, 5))
-    cores = ['steelblue'] * 5
-    cores[melhor_idx] = 'darkorange'
-    plt.bar([f"T{i+1}" for i in range(5)], eqms_finais, color=cores, edgecolor='black')
-    plt.title("EQM Final por Treinamento")
-    plt.xlabel("Treinamento")
-    plt.ylabel("EQM Final")
-    plt.grid(True, axis='y')
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "eqm_comparativo.png"), dpi=300)
-    plt.close()
+    # Impressao da tabela no terminal
+    cabecalho = (f"{'Am':>3} | {'x1':>6} {'x2':>6} {'x3':>6} {'x4':>6} | "
+                 f"{'d1':>2} {'d2':>2} {'d3':>2} | "
+                 f"{'y1':>2} {'y2':>2} {'y3':>2} | OK")
+    print(cabecalho)
+    print("-" * len(cabecalho))
+    for i in range(len(X_val)):
+        ok = "sim" if acertos[i] else "NAO"
+        print(f"{i+1:>3} | "
+              f"{X_val[i,0]:6.4f} {X_val[i,1]:6.4f} {X_val[i,2]:6.4f} {X_val[i,3]:6.4f} | "
+              f"{int(y_val[i,0]):>2} {int(y_val[i,1]):>2} {int(y_val[i,2]):>2} | "
+              f"{y_val_pos[i,0]:>2} {y_val_pos[i,1]:>2} {y_val_pos[i,2]:>2} | {ok}")
 
-    print("\nGraficos salvos em:", output_dir)
+    print(f"\n  Total de acertos: {n_acertos}/{len(X_val)} = {taxa_acertos:.2f}%")
+
+    # Geracao da planilha Excel no formato da Tabela 1
+    planilha_path = os.path.join(base_dir, "Tabela1_validacao.xlsx")
+    gerar_planilha_tabela1(X_val, y_val, y_val_pos, taxa_acertos, planilha_path)
+    print(f"  Planilha Excel salva em: {planilha_path}")
+
+    # -------------------------------------------------------------------------
+    # ETAPA 3 - Validacao cruzada: 5 novos treinamentos com split aleatorio 80/20
+    # -------------------------------------------------------------------------
+    print("\n" + "=" * 60)
+    print("ETAPA 3 - VALIDACAO CRUZADA (5 TREINAMENTOS - SPLIT 80/20)")
+    print("=" * 60)
+
+    resultados_e3 = etapa3_validacao_cruzada(dados_completos, output_dir,
+                                             n_redes=5, proporcao_treino=0.8)
+
+    print("-" * 60)
+    print("RESUMO DA ETAPA 3")
+    print("-" * 60)
+    print(f"{'Rede':>5} | {'Epocas':>7} | {'EQM final':>12} | {'Acertos':>10} | {'Taxa':>7}")
+    print("-" * 60)
+    for r in resultados_e3:
+        print(f"{r['rede']:>5} | {r['epocas']:>7} | {r['eqm_final']:>12.8f} | "
+              f"{r['n_acertos']:>3}/{r['n_val']:<6} | {r['taxa']:>6.2f}%")
 
 
 if __name__ == "__main__":
